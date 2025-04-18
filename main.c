@@ -48,7 +48,7 @@
 #define SSD1306_RST_LAT    LATCbits.LATC4 // RC4 lat for RST
 
 #define SSD1306_CS_TRIS    TRISCbits.TRISC0 // RC0 tris for CS
-#define SSD1306_DATA       TRISCbits.TRISC1 // RC1 tris for RST
+#define SSD1306_DATA_TRIS  TRISCbits.TRISC1 // RC1 tris for RST
 #define SSD1306_DC_TRIS    TRISCbits.TRISC2 // RC2 tris for D/C
 #define SSD1306_CLK_TRIS   TRISCbits.TRISC3 // RC3 tris for RST
 #define SSD1306_RST_TRIS   TRISCbits.TRISC4 // RC4 tris for RST
@@ -59,7 +59,7 @@ void SPI_Init(void) {
     SSD1306_DC_TRIS = 0;  // RC2 output (DC)
     SSD1306_RST_TRIS = 0; // RC4 output (RST)
     SSD1306_CLK_TRIS = 0; // RC3 output (SCK1)
-    SSD1306_DATA = 0;     // RC1 output (SDO1)
+    SSD1306_DATA_TRIS = 0;     // RC1 output (SDO1)
 
     SSP1STAT = 0b00000000; // CKE=1, SMP=0
     
