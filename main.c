@@ -72,7 +72,7 @@ void SPI_Init(void) {
     
     //Page 361
     SSP1ADD = 0b0000; //Clock divider for SCLK to nothing. Its divided by 4, so output is 250khz   
-    SSP1CONbits.SSPM = 0b00001010; //Set SPI master mode    
+    SSP1CONbits.SSPM = 0b0000; //Set SPI master mode    
     SSP1CON1bits.SSPEN = 1; //Enable SPI mode
 }
 
