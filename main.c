@@ -273,6 +273,8 @@ void main(void) {
     // Wait for the oscillator to be ready
     while (!OSCCON3bits.ORDY);
 
+    __delay_ms(500); //Delay to ensure the display is ready 
+
     SPI_Init();
     
     SSD1306_Init();
