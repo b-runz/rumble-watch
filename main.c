@@ -53,6 +53,44 @@
 #define SSD1306_CLK_TRIS   TRISCbits.TRISC3 // RC3 tris for RST
 #define SSD1306_RST_TRIS   TRISCbits.TRISC4 // RC4 tris for RST
 
+// SSD1306 Command Definitions (from Adafruit_SSD1306.h)
+#define SSD1306_SETCONTRAST 0x81
+#define SSD1306_DISPLAYALLON_RESUME 0xA4
+#define SSD1306_DISPLAYALLON 0xA5
+#define SSD1306_NORMALDISPLAY 0xA6
+#define SSD1306_INVERTDISPLAY 0xA7
+#define SSD1306_DISPLAYOFF 0xAE
+#define SSD1306_DISPLAYON 0xAF
+#define SSD1306_SETDISPLAYOFFSET 0xD3
+#define SSD1306_SETCOMPINS 0xDA
+#define SSD1306_SETVCOMDETECT 0xDB
+#define SSD1306_SETDISPLAYCLOCKDIV 0xD5
+#define SSD1306_SETPRECHARGE 0xD9
+#define SSD1306_SETMULTIPLEX 0xA8
+#define SSD1306_SETLOWCOLUMN 0x00
+#define SSD1306_SETHIGHCOLUMN 0x10
+#define SSD1306_SETSTARTLINE 0x40
+#define SSD1306_MEMORYMODE 0x20
+#define SSD1306_COLUMNADDR 0x21
+#define SSD1306_PAGEADDR 0x22
+#define SSD1306_COMSCANINC 0xC0
+#define SSD1306_COMSCANDEC 0xC8
+#define SSD1306_SEGREMAP 0xA0
+#define SSD1306_CHARGEPUMP 0x8D
+#define SSD1306_EXTERNALVCC 0x01
+#define SSD1306_SWITCHCAPVCC 0x02
+#define SSD1306_ACTIVATE_SCROLL 0x2F
+#define SSD1306_DEACTIVATE_SCROLL 0x2E
+
+// Display dimensions
+#define WIDTH 128
+#define HEIGHT 32
+#define PAGES (HEIGHT / 8) // 4 pages for 128x32
+#define BUFFER_SIZE (WIDTH * PAGES) // 128 * 4 = 512 bytes
+
+// Display buffer
+uint8_t display_buffer[BUFFER_SIZE];
+
 void SPI_Init(void) {
     ANSELC = 0x00; // Disable analog functions on PORTC
     SSD1306_CS_TRIS = 0;  // RC0 output (CS)
@@ -89,92 +127,137 @@ void SPI_Write(uint8_t data) {
 }
 
 void SSD1306_Command(uint8_t cmd) {
-    SSD1306_DC_LAT = 0;
-    SSD1306_CS_LAT = 0;
+    SSD1306_DC_LAT = 0;    // Command mode
+    SSD1306_CS_LAT = 0;    // Select device
     SPI_Write(cmd);
-    SSD1306_CS_LAT = 1;
+    SSD1306_CS_LAT = 1;    // Deselect device
 }
 
 void SSD1306_Data(uint8_t data) {
-    SSD1306_DC_LAT = 1;
-    SSD1306_CS_LAT = 0;
+    SSD1306_DC_LAT = 1;    // Data mode
+    SSD1306_CS_LAT = 0;    // Select device
     SPI_Write(data);
-    SSD1306_CS_LAT = 1;
+    SSD1306_CS_LAT = 1;    // Deselect device
+}
+
+void SSD1306_CommandList(const uint8_t *commands, uint8_t count) {
+    for (uint8_t i = 0; i < count; i++) {
+        SSD1306_Command(commands[i]);
+    }
 }
 
 void SSD1306_Init(void) {
-    uint8_t height = 32;
+    uint8_t vccstate = SSD1306_SWITCHCAPVCC; // Internal charge pump
+    uint8_t comPins = 0x02; // For 128x32
+    uint8_t contrast = 0x8F;
 
     SSD1306_Reset();
 
-    SSD1306_Command(0xAE); // Display OFF
-    SSD1306_Command(0xD5); // Set display clock
-    SSD1306_Command(0x80);
+    // Initialization sequence adapted from Adafruit_SSD1306.cpp
+    const uint8_t init1[] = {
+        SSD1306_DISPLAYOFF,         // 0xAE
+        SSD1306_SETDISPLAYCLOCKDIV, // 0xD5
+        0x80,                       // Suggested ratio 0x80
+        SSD1306_SETMULTIPLEX        // 0xA8
+    };
+    SSD1306_CommandList(init1, sizeof(init1));
+    SSD1306_Command(HEIGHT - 1); // 31 for 128x32
 
-    SSD1306_Command(0xA8); // Set multiplex ratio
-    SSD1306_Command(height - 1); // 0x1F
+    const uint8_t init2[] = {
+        SSD1306_SETDISPLAYOFFSET,   // 0xD3
+        0x00,                       // No offset
+        SSD1306_SETSTARTLINE | 0x0, // Line #0
+        SSD1306_CHARGEPUMP          // 0x8D
+    };
+    SSD1306_CommandList(init2, sizeof(init2));
+    SSD1306_Command(vccstate == SSD1306_EXTERNALVCC ? 0x10 : 0x14); // 0x14 for internal VCC
 
-    SSD1306_Command(0xD3); // Display offset
-    SSD1306_Command(0x00);
-    SSD1306_Command(0x40); // Start line = 0
+    const uint8_t init3[] = {
+        SSD1306_MEMORYMODE,   // 0x20
+        0x00,                 // Horizontal addressing mode
+        SSD1306_SEGREMAP | 0x1, // Segment remap
+        SSD1306_COMSCANDEC    // COM scan direction
+    };
+    SSD1306_CommandList(init3, sizeof(init3));
 
-    SSD1306_Command(0x8D); // Charge pump
-    SSD1306_Command(0x14);
+    SSD1306_Command(SSD1306_SETCOMPINS);
+    SSD1306_Command(comPins); // 0x02 for 128x32
+    SSD1306_Command(SSD1306_SETCONTRAST);
+    SSD1306_Command(contrast); // 0x8F
 
-    SSD1306_Command(0x20); // Memory mode
-    SSD1306_Command(0x00); // Horizontal addressing
+    SSD1306_Command(SSD1306_SETPRECHARGE); // 0xD9
+    SSD1306_Command(vccstate == SSD1306_EXTERNALVCC ? 0x22 : 0xF1); // 0xF1 for internal VCC
 
-    SSD1306_Command(0xA1); // Segment remap
-    SSD1306_Command(0xC8); // COM scan direction
-
-    SSD1306_Command(0xDA); // COM pins config
-    SSD1306_Command(0x02); // For 128x32
-
-    SSD1306_Command(0x81); // Contrast
-    SSD1306_Command(0x8F);
-
-    SSD1306_Command(0xD9); // Pre-charge
-    SSD1306_Command(0xF1);
-
-    SSD1306_Command(0xDB); // VCOMH
-    SSD1306_Command(0x40);
-
-    SSD1306_Command(0xA4); // Resume to RAM content
-    SSD1306_Command(0xA6); // Normal display
-
-    SSD1306_Command(0xAF); // Display ON
+    const uint8_t init5[] = {
+        SSD1306_SETVCOMDETECT,      // 0xDB
+        0x40,
+        SSD1306_DISPLAYALLON_RESUME, // 0xA4
+        SSD1306_NORMALDISPLAY,      // 0xA6
+        SSD1306_DEACTIVATE_SCROLL,
+        SSD1306_DISPLAYON           // Turn on display
+    };
+    SSD1306_CommandList(init5, sizeof(init5));
 }
 
-void SSD1306_Clear(void) {
-    uint8_t pages = 4;
-
-    SSD1306_Command(0x21); // Column address
-    SSD1306_Command(0x00);
-    SSD1306_Command(0x7F); // 127
-
-    SSD1306_Command(0x22); // Page address
-    SSD1306_Command(0x00);
-    SSD1306_Command(pages - 1); // 0x03
-
-    for (uint16_t i = 0; i < 128 * pages; i++) {
-        SSD1306_Data(0x00);
+void SSD1306_ClearBuffer(void) {
+    for (uint16_t i = 0; i < BUFFER_SIZE; i++) {
+        display_buffer[i] = 0x00; // All black
     }
 }
 
-void SSD1306_Test(void) {
-    uint8_t pages = 4;
-
-    SSD1306_Command(0x21);
-    SSD1306_Command(0x00);
-    SSD1306_Command(0x7F);
-
-    SSD1306_Command(0x22);
-    SSD1306_Command(0x00);
-    SSD1306_Command(pages - 1);
-
-    for (uint16_t i = 0; i < 128 * pages; i++) {
-        SSD1306_Data((i & 1) ? 0xFF : 0x00);
+void SSD1306_FillBuffer(uint8_t value) {
+    for (uint16_t i = 0; i < BUFFER_SIZE; i++) {
+        display_buffer[i] = value; // Fill with specified value (e.g., 0xFF for all white)
     }
+}
+
+void SSD1306_DrawPixel(int16_t x, int16_t y, uint8_t color) {
+    if (x < 0 || x >= WIDTH || y < 0 || y >= HEIGHT) {
+        return; // Out of bounds
+    }
+
+    uint16_t index = x + (y / 8) * WIDTH;
+    uint8_t bit = 1 << (y & 7);
+
+    if (color) {
+        display_buffer[index] |= bit;  // Set pixel (white)
+    } else {
+        display_buffer[index] &= ~bit; // Clear pixel (black)
+    }
+}
+
+void SSD1306_Display(void) {
+    // Set column and page address range
+    SSD1306_Command(SSD1306_COLUMNADDR);
+    SSD1306_Command(0);         // Column start (0)
+    SSD1306_Command(WIDTH - 1); // Column end (127)
+
+    SSD1306_Command(SSD1306_PAGEADDR);
+    SSD1306_Command(0);         // Page start (0)
+    SSD1306_Command(PAGES - 1); // Page end (3)
+
+    // Send buffer to display
+    SSD1306_DC_LAT = 1;    // Data mode
+    SSD1306_CS_LAT = 0;    // Select device
+    for (uint16_t i = 0; i < BUFFER_SIZE; i++) {
+        SPI_Write(display_buffer[i]);
+    }
+    SSD1306_CS_LAT = 1;    // Deselect device
+}
+
+void SSD1306_TestPattern(void) {
+    SSD1306_ClearBuffer();
+    // Draw a simple pattern: top half white, bottom half black
+    for (int16_t x = 0; x < WIDTH; x++) {
+        for (int16_t y = 0; y < HEIGHT; y++) {
+            if (y < HEIGHT / 2) {
+                SSD1306_DrawPixel(x, y, 1); // Top half white
+            } else {
+                SSD1306_DrawPixel(x, y, 0); // Bottom half black
+            }
+        }
+    }
+    SSD1306_Display();
 }
 
 void main(void) {
@@ -191,12 +274,24 @@ void main(void) {
     while (!OSCCON3bits.ORDY);
 
     SPI_Init();
-    SSD1306_Init();
     
-    while(1){
-        __delay_ms(10);
-        SSD1306_Clear();
-        SSD1306_Test();
+    SSD1306_Init();
+    SSD1306_ClearBuffer();
+    
+    while(1) {
+        // Test 1: Top half white, bottom half black
+        SSD1306_TestPattern();
+        __delay_ms(2000); // Display for 2 seconds
+
+        // Test 2: All white
+        SSD1306_FillBuffer(0xFF);
+        SSD1306_Display();
+        __delay_ms(2000); // Display for 2 seconds
+
+        // Test 3: All black
+        SSD1306_ClearBuffer();
+        SSD1306_Display();
+        __delay_ms(2000); // Display for 2 seconds
     }
     
     return;
