@@ -82,11 +82,7 @@
 
 void spi_init(void) {
     ANSELC = 0x00;
-
-    // Set pin directions
-    CS_TRIS = 0;
-    DC_TRIS = 0;
-    RST_TRIS = 0;
+    ANSELCbits.ANSC1 = 0; // RC1 (SDO) digital mode
 
     // PPS Mapping
     RC1PPS = 0x19; // SDO1 -> RC1
@@ -98,34 +94,18 @@ void spi_init(void) {
     SSP1STAT = 0x40;      // CKE = 1 (Mode 0)
     SSP1CON1 = 0x20;      // SSPEN = 1, SPI Master, Fosc/4
     SSP1ADD = 0x00;       // No additional divider
+        
+    // Set pin directions
+    DC_TRIS = 0;
+    CS_TRIS = 0;
+    RST_TRIS = 0;
 }
 
-
-void ssd1306_command(uint8_t cmd)
+void spi_send(uint8_t cmd)
 {
-    DC_LAT = 0;    // Command mode
-    CS_LAT = 0;    // Select the device
-
     SSP1BUF = cmd;
     while (!SSP1STATbits.BF); // Wait for transmission to complete
-
-    CS_LAT = 1;    // Deselect the device
 }
-
-
-void spi_write(uint8_t data) {
-    SSP1BUF = data;
-    while (!PIR1bits.SSP1IF);
-    PIR1bits.SSP1IF = 0;
-}
-
-void ssd1306_reset(void) {
-    RST_LAT = 0;
-    __delay_ms(10);
-    RST_LAT = 1;
-    __delay_ms(10);
-}
-
 
 uint8_t ssd1306_buffer[512];
 
@@ -137,36 +117,57 @@ void ssd1306_clear_display()
     }
 }
 
-void ssd1306_init(void)
+void ssd1306_begin(void)
 {
-    ssd1306_reset();
+    CS_LAT = 1; //Set Chip-select high
+    
+    RST_LAT = 1;
+    __delay_ms(1);
+    RST_LAT = 0;
+    __delay_ms(10);
+    RST_LAT = 1;
+    
+    CS_LAT = 0;
 
-    ssd1306_command(SSD1306_DISPLAYOFF);              // 0xAE
-    ssd1306_command(SSD1306_SETDISPLAYCLOCKDIV);      // 0xD5
-    ssd1306_command(0x80);                             // Suggested ratio
-    ssd1306_command(SSD1306_SETMULTIPLEX);            // 0xA8
-    ssd1306_command(0x1F);                             // For 128x32 display (0x1F = 31)
-    ssd1306_command(SSD1306_SETDISPLAYOFFSET);        // 0xD3
-    ssd1306_command(0x00);                             // No offset
-    ssd1306_command(SSD1306_SETSTARTLINE | 0x00);      // 0x40
-    ssd1306_command(SSD1306_CHARGEPUMP);              // 0x8D
-    ssd1306_command(0x14);                             // Enable charge pump (internal VCC)
-    ssd1306_command(SSD1306_MEMORYMODE);              // 0x20
-    ssd1306_command(0x00);                             // Horizontal addressing mode
-    ssd1306_command(SSD1306_SEGREMAP | 0x01);          // 0xA1 – column address 127 is mapped to SEG0
-    ssd1306_command(SSD1306_COMSCANDEC);              // 0xC8 – scan from COM[N-1] to COM0
-    ssd1306_command(SSD1306_SETCOMPINS);              // 0xDA
-    ssd1306_command(0x02);                             // For 128x32
-    ssd1306_command(SSD1306_SETCONTRAST);             // 0x81
-    ssd1306_command(0x8F);                             // Contrast value
-    ssd1306_command(SSD1306_SETPRECHARGE);            // 0xD9
-    ssd1306_command(0xF1);                             // Pre-charge period
-    ssd1306_command(SSD1306_SETVCOMDETECT);           // 0xDB
-    ssd1306_command(0x40);                             // VCOMH deselect level
-    ssd1306_command(SSD1306_DISPLAYALLON_RESUME);     // 0xA4
-    ssd1306_command(SSD1306_NORMALDISPLAY);           // 0xA6
-    ssd1306_command(SSD1306_DEACTIVATE_SCROLL);       // 0x2E
-    ssd1306_command(SSD1306_DISPLAYON);               // 0xAF
+    DC_LAT = 0; // Set to command mode
+    spi_send(SSD1306_DISPLAYOFF);              // 0xAE
+    spi_send(SSD1306_SETDISPLAYCLOCKDIV);      // 0xD5
+    spi_send(0x80);                             // Suggested ratio
+    spi_send(SSD1306_SETMULTIPLEX);            // 0xA8
+      
+    spi_send(0x1F);                             // For 128x32 display (0x1F = 31)    
+    
+    spi_send(SSD1306_SETDISPLAYOFFSET);        // 0xD3
+    spi_send(0x00);                             // No offset
+    spi_send(SSD1306_SETSTARTLINE | 0x00);      // 0x40
+    spi_send(SSD1306_CHARGEPUMP);              // 0x8D    
+    
+    spi_send(0x14);                             // Enable charge pump (internal VCC)
+    
+    spi_send(SSD1306_MEMORYMODE);              // 0x20
+    spi_send(0x00);                             // Horizontal addressing mode
+    spi_send(SSD1306_SEGREMAP | 0x1);          // 0xA1 – column address 127 is mapped to SEG
+    spi_send(SSD1306_COMSCANDEC);              // 0xC8 – scan from COM[N-1] to COM0
+    
+    DC_LAT = 0; // Set to command mode
+    
+    spi_send(SSD1306_SETCOMPINS);              // 0xDA
+    spi_send(0x02);                             // For 128x32
+    spi_send(SSD1306_SETCONTRAST);             // 0x81
+    spi_send(0x8F);                             // Contrast value
+        
+    spi_send(SSD1306_SETPRECHARGE);            // 0xD9
+    spi_send(0xF1);                             // Pre-charge period
+    
+    spi_send(SSD1306_SETVCOMDETECT);           // 0xDB
+    spi_send(0x40);                             // VCOMH deselect level
+    spi_send(SSD1306_DISPLAYALLON_RESUME);     // 0xA4
+    spi_send(SSD1306_NORMALDISPLAY);           // 0xA6
+    spi_send(SSD1306_DEACTIVATE_SCROLL);       // 0x2E
+    spi_send(SSD1306_DISPLAYON);               // 0xAF
+    
+    CS_LAT = 1;
+    ssd1306_clear_display();
 }
 
 void ssd1306_draw_pixel(int16_t x, int16_t y, uint16_t color)
@@ -186,33 +187,31 @@ void ssd1306_draw_pixel(int16_t x, int16_t y, uint16_t color)
         }
     }
 }
-
-void ssd1306_data(uint8_t data)
+void ssd1306_display(void)
 {
-    DC_LAT = 1;    // Data mode
     CS_LAT = 0;
-
-    SSP1BUF = data;
-    while (!SSP1STATbits.BF); // Wait for transmission to complete
-
+    DC_LAT = 0;
+    
+    spi_send(SSD1306_PAGEADDR);
+    spi_send(0);
+    spi_send(0xFF);
+    spi_send(SSD1306_COLUMNADDR);
+    spi_send(0);
+    
+    spi_send(SCREEN_WIDTH - 1);
+    
+    uint16_t count = SCREEN_WIDTH * ((SCREEN_HEIGHT + 7) / 8);
+    uint8_t *ptr = ssd1306_buffer;
+    
+    DC_LAT = 1;
+    
+    while(count--){
+        spi_send(*ptr++);
+    }
+    
     CS_LAT = 1;
 }
 
-void ssd1306_display()
-{
-    ssd1306_command(SSD1306_COLUMNADDR);
-    ssd1306_command(0);               // Column start address
-    ssd1306_command(SCREEN_WIDTH - 1); // Column end address
-
-    ssd1306_command(SSD1306_PAGEADDR);
-    ssd1306_command(0);                         // Page start address
-    ssd1306_command((SCREEN_HEIGHT / 8) - 1);   // Page end address
-
-    for (uint16_t i = 0; i < BUFFER_SIZE; i++)
-    {
-        ssd1306_data(ssd1306_buffer[i]);
-    }
-}
 
 void displayTestPattern()
 {
@@ -237,13 +236,11 @@ void main(void) {
 
     while (!OSCCON3bits.ORDY); // Wait for oscillator ready
 
+    __delay_ms(500);
     spi_init();
-    __delay_ms(200);
-    ssd1306_init();
+    ssd1306_begin();
+    displayTestPattern();
 
     while (1) {
-        displayTestPattern();
-        
-        __delay_ms(100);
     }
 }
